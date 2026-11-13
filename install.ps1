@@ -63,6 +63,15 @@ choco install -y awscli --version 2.39.3; Assert-Success
 $env:ChocolateyInstall = Convert-Path "$((Get-Command choco).Path)\..\.."
 Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 refreshenv
+# an old pip-installed aws (e.g. Python312\Scripts\aws.cmd) earlier on PATH hides the one just
+# installed - for this script and for LAUNCH.sh - so delete every aws that isn't the v2 one
+$awsV2Path = "$env:ProgramFiles\Amazon\AWSCLIV2\aws.exe"
+foreach ($awsCommand in Get-Command aws -All -CommandType Application) {
+  if ($awsCommand.Source -ne $awsV2Path) {
+    Write-Output "removing old aws $($awsCommand.Source)"
+    Remove-Item $awsCommand.Source
+  }
+}
 Assert-AwsKeysWork
 
 $repoName = [IO.Path]::GetFileNameWithoutExtension($repoUrl)
