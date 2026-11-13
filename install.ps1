@@ -23,6 +23,35 @@ while (-not $secretAccessKey) {
   $secretAccessKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secretAccessKeySecure)).Trim()
 }
 
+# asks AWS who these keys belong to, using them only for this one call so a bad paste never
+# overwrites a working saved login. If AWS rejects them, show a page saying so and stop.
+function Assert-AwsKeysWork {
+  Write-Output "checking the AWS keys..."
+  $env:AWS_ACCESS_KEY_ID = $accessKeyId
+  $env:AWS_SECRET_ACCESS_KEY = $secretAccessKey
+  aws sts get-caller-identity --region eu-west-2 | Out-Null
+  $keysWork = ($LASTEXITCODE -eq 0)
+  Remove-Item Env:AWS_ACCESS_KEY_ID, Env:AWS_SECRET_ACCESS_KEY
+  if (-not $keysWork) {
+    $wrongKeysPage = "$env:TEMP\wrong-credentials.html"
+    Set-Content -Path $wrongKeysPage -Value @'
+<!doctype html>
+<html>
+<body>
+<h1>you pasted the wrong thing into the credentials</h1>
+<img src="https://i.kym-cdn.com/entries/icons/original/000/030/659/ben.jpg">
+</body>
+</html>
+'@
+    Start-Process $wrongKeysPage
+    throw "AWS rejected the access key ID / secret - run the installer again and paste the right ones"
+  }
+}
+# a brand new machine has no aws yet - it gets checked after the packages are installed instead
+if (Get-Command aws -ErrorAction SilentlyContinue) {
+  Assert-AwsKeysWork
+}
+
 $repoName = [IO.Path]::GetFileNameWithoutExtension($repoUrl)
 $repoDir = "$HOME\$repoName"
 $oldRepoDir = "C:\$repoName"
@@ -225,6 +254,7 @@ Write-Output "adding registry entry to disable real-time protection"
 New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" -Force
 New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" -Name "DisableRealtimeMonitoring" -Value 1 -PropertyType DWORD -Force
 
+Assert-AwsKeysWork
 Write-Output "logging in to AWS..."
 aws configure set aws_access_key_id $accessKeyId --profile automation-bot; Assert-Success
 aws configure set aws_secret_access_key $secretAccessKey --profile automation-bot; Assert-Success
