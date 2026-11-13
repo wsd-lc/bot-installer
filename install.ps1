@@ -47,10 +47,23 @@ function Assert-AwsKeysWork {
     throw "AWS rejected the access key ID / secret - run the installer again and paste the right ones"
   }
 }
-# a brand new machine has no aws yet - it gets checked after the packages are installed instead
-if (Get-Command aws -ErrorAction SilentlyContinue) {
-  Assert-AwsKeysWork
+if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+  Write-Output "installing chocolatey..."
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+  Invoke-Expression ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 }
+
+# Force non-interactive mode and confirm yes to all prompts
+$env:ChocolateyAllowGlobalConfirmation = 'true'
+
+# aws first, so bad keys are caught now rather than after the whole install
+Write-Output "installing aws cli..."
+choco install -y awscli --version 2.39.3; Assert-Success
+# a fresh aws install isn't on this session's PATH until the environment is reloaded
+$env:ChocolateyInstall = Convert-Path "$((Get-Command choco).Path)\..\.."
+Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+refreshenv
+Assert-AwsKeysWork
 
 $repoName = [IO.Path]::GetFileNameWithoutExtension($repoUrl)
 $repoDir = "$HOME\$repoName"
@@ -151,18 +164,8 @@ if (-not $?) { Write-Warning "Could not remove python.exe alias (may not exist)"
 Remove-Item $env:LOCALAPPDATA\Microsoft\WindowsApps\python3.exe -ErrorAction SilentlyContinue -WarningAction Continue
 if (-not $?) { Write-Warning "Could not remove python3.exe alias (may not exist)" }
 
-if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-  Write-Output "installing chocolatey..."
-  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
-  Invoke-Expression ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-}
-
-# Force non-interactive mode and confirm yes to all prompts
-$env:ChocolateyAllowGlobalConfirmation = 'true'
-
 Write-Output "installing packages..."
 choco install -y git
-choco install -y awscli --version 2.39.3
 choco install -y scrcpy --version 2.4
 # A box that already got nvm 2 needs it removed first: choco's own uninstall script for it fails,
 # so use nvm 2's uninstaller.
@@ -262,7 +265,6 @@ Write-Output "adding registry entry to disable real-time protection"
 New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" -Force
 New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" -Name "DisableRealtimeMonitoring" -Value 1 -PropertyType DWORD -Force
 
-Assert-AwsKeysWork
 Write-Output "logging in to AWS..."
 aws configure set aws_access_key_id $accessKeyId --profile automation-bot; Assert-Success
 aws configure set aws_secret_access_key $secretAccessKey --profile automation-bot; Assert-Success
