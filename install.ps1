@@ -64,12 +64,14 @@ $env:ChocolateyInstall = Convert-Path "$((Get-Command choco).Path)\..\.."
 Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 refreshenv
 # an old pip-installed aws (e.g. Python312\Scripts\aws.cmd) earlier on PATH hides the one just
-# installed - for this script and for LAUNCH.sh - so delete every aws that isn't the v2 one
+# installed - for this script and for LAUNCH.sh - so delete every aws that isn't the v2 one, along
+# with the rest of its scripts in that folder (aws_completer etc.)
 $awsV2Path = "$env:ProgramFiles\Amazon\AWSCLIV2\aws.exe"
 foreach ($awsCommand in Get-Command aws -All -CommandType Application) {
   if ($awsCommand.Source -ne $awsV2Path) {
-    Write-Output "removing old aws $($awsCommand.Source)"
-    Remove-Item $awsCommand.Source
+    $oldAwsFiles = Join-Path (Split-Path $awsCommand.Source) 'aws*'
+    Write-Output "removing old aws $oldAwsFiles"
+    Remove-Item $oldAwsFiles
   }
 }
 Assert-AwsKeysWork
