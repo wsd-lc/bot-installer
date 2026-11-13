@@ -135,10 +135,6 @@ Write-Output "installing packages..."
 choco install -y git
 choco install -y awscli --version 2.39.3
 choco install -y scrcpy --version 2.4
-# nvm.install directly, not the `nvm` package: that one ignores its pin on nvm.install and pulls
-# in nvm 2.x, which moves node out of C:\ProgramData\nvm and breaks npm. Remove `nvm` in case an
-# earlier run installed it (errors harmlessly if it isn't there).
-choco uninstall -y nvm --skip-powershell
 # A box that already got nvm 2 needs it removed first: choco's own uninstall script for it fails,
 # so use nvm 2's uninstaller.
 $nvm2Uninstaller = "$env:LOCALAPPDATA\Author Software\nvm\unins000.exe"
@@ -146,6 +142,12 @@ if (Test-Path $nvm2Uninstaller) {
   Write-Output "removing nvm 2..."
   Start-Process $nvm2Uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
   choco uninstall -y nvm.install --skip-powershell
+}
+# nvm.install directly, not the `nvm` package: that one ignores its pin on nvm.install and pulls
+# in nvm 2.x, which moves node out of C:\ProgramData\nvm and breaks npm. Remove `nvm` if an earlier
+# run installed it. -x takes nvm.install with it - without -x choco stops to ask about it even with -y.
+if (Test-Path "$env:ChocolateyInstall\lib\nvm") {
+  choco uninstall -y nvm -x --skip-powershell
 }
 # remove nvm's node link (`nvm use` below recreates it): nvm 2 leaves it dead, and an existing one
 # makes the nvm installer wait on a hidden "existing node" message box. Found via its parent folder
@@ -157,8 +159,9 @@ if ($nodeLink) {
 }
 # 1.1.11 not 1.1.12: 1.1.12 hangs forever when its output isn't a console window (ssh, git bash,
 # redirected) - https://github.com/coreybutler/nvm-windows/issues/1068
-# --allow-downgrade for the boxes already on 1.1.12
-choco install -y nvm.install --version 1.1.11 --allow-downgrade
+# upgrade, not install: installs it if missing, skips if already 1.1.11, otherwise moves to 1.1.11
+# (--allow-downgrade for the boxes already on 1.1.12)
+choco upgrade -y nvm.install --version 1.1.11 --allow-downgrade
 # the package starts nvm-setup.exe without waiting for it, so wait before `nvm install` below
 Wait-Process -Name nvm-setup -ErrorAction SilentlyContinue
 choco install -y scrcpy adb notepadplusplus
