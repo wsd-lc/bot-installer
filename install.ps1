@@ -188,11 +188,19 @@ if ($nodeLink) {
 }
 # 1.1.11 not 1.1.12: 1.1.12 hangs forever when its output isn't a console window (ssh, git bash,
 # redirected) - https://github.com/coreybutler/nvm-windows/issues/1068
-# upgrade, not install: installs it if missing, skips if already 1.1.11, otherwise moves to 1.1.11
-# (--allow-downgrade for the boxes already on 1.1.12)
-choco upgrade -y nvm.install --version 1.1.11 --allow-downgrade
-# the package starts nvm-setup.exe without waiting for it, so wait before `nvm install` below
-Wait-Process -Name nvm-setup -ErrorAction SilentlyContinue
+# nvm's own installer rather than choco's nvm.install: that package runs it without
+# /SUPPRESSMSGBOXES, so it stops on "Node is already installed, do you want NVM to control it?".
+# Runs every time (installs, reinstalls or moves 1.1.12 down to 1.1.11) - asking nvm its version
+# isn't safe, because that is the command 1.1.12 hangs on.
+Write-Output "installing nvm 1.1.11..."
+$nvmZip = "$env:TEMP\nvm-setup-1.1.11.zip"
+Invoke-WebRequest -Uri "https://github.com/coreybutler/nvm-windows/releases/download/1.1.11/nvm-setup.zip" -OutFile $nvmZip
+# same sha256 the choco package checks
+if ((Get-FileHash $nvmZip -Algorithm SHA256).Hash -ne '71DF09235FF5085DEE44E451F7D365DA144A5BB3A3E8C809136374D24B3F8250') {
+  throw "nvm-setup.zip download doesn't match its known checksum"
+}
+Expand-Archive -Force $nvmZip "$env:TEMP\nvm-setup-1.1.11"
+Start-Process "$env:TEMP\nvm-setup-1.1.11\nvm-setup.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/DIR=C:\ProgramData\nvm' -Wait
 choco install -y scrcpy adb notepadplusplus
 choco install -y ffmpeg --version=7.1.1
 choco install -y googlechrome --ignore-checksums
