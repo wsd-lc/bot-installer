@@ -118,8 +118,21 @@ try {
   Write-Output "Enabling remote desktop in firewall..."
   Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-  Write-Output "Installing OpenSSH server..."
-  Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+  if (Get-Service sshd -ErrorAction SilentlyContinue) {
+    Write-Output "OpenSSH server already installed"
+  } else {
+    Write-Output "Installing OpenSSH server..."
+    $opensshMsi = "$env:TEMP\OpenSSH-Win64-v10.0.0.0.msi"
+    Invoke-WebRequest -Uri 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-Win64-v10.0.0.0.msi' -OutFile $opensshMsi
+    if ((Get-FileHash $opensshMsi -Algorithm SHA256).Hash -ne 'DDEC9C53864280759CF9F74791CEFD387100E3946AA849A1C138A4ED1B96B7D9') {
+      throw "OpenSSH msi download doesn't match its known checksum"
+    }
+    $opensshLog = "$env:TEMP\openssh-install.log"
+    $msiexec = Start-Process msiexec.exe -ArgumentList '/i', $opensshMsi, 'ADDLOCAL=Server', '/quiet', '/norestart', '/L*V', $opensshLog -Wait -PassThru
+    if ($msiexec.ExitCode -ne 0 -and $msiexec.ExitCode -ne 3010) {
+      throw "OpenSSH server install failed with exit code $($msiexec.ExitCode), log: $opensshLog"
+    }
+  }
 
   Write-Output "Start SSH service (to generate config file)..."
   Restart-Service sshd
@@ -139,15 +152,11 @@ try {
   $sshd_config = "C:\ProgramData\ssh\sshd_config"
 
   if (-not (Test-Path $sshd_config)) {
-    Write-Error "ERROR: sshd_config file not found at $sshd_config"
-    Read-Host 'Press any key to continue...'
-    exit 1
+    throw "sshd_config file not found at $sshd_config"
   }
 
   if ((Get-Item $sshd_config).length -eq 0) {
-    Write-Error "ERROR: sshd_config file exists but is empty"
-    Read-Host 'Press any key to continue...'
-    exit 1
+    throw "sshd_config file exists but is empty"
   }
 
   (Get-Content $sshd_config) -replace '#PubkeyAuthentication', 'PubkeyAuthentication' | Out-File -encoding ASCII $sshd_config
@@ -253,7 +262,8 @@ try {
   powercfg /setactive SCHEME_MIN
 
   Write-Output "Disabling USB selective suspend..."
-  powercfg /SETDCVALUEINDEX SCHEME_MIN 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
+  powercfg /SETACVALUEINDEX SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
+  powercfg /SETDCVALUEINDEX SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
 
   Write-Output "Setting monitor timeout to never (0) when plugged in (AC power)"
   powercfg -change -monitor-timeout-ac 0
@@ -262,13 +272,13 @@ try {
   powercfg -change -standby-timeout-ac 0
 
   Write-Output "Setting AC close lid to no action"
-  powercfg /SETACVALUEINDEX SCHEME_MIN SUB_BUTTONS LIDACTION 0
+  powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
 
   Write-Output "Setting DC close lid to no action"
-  powercfg /SETDCVALUEINDEX SCHEME_MIN SUB_BUTTONS LIDACTION 0
+  powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
 
-  Write-Output "re-activating changes in high performance power plan"
-  powercfg /setactive SCHEME_MIN
+  Write-Output "re-activating changes in the power plan"
+  powercfg /setactive SCHEME_CURRENT
 
   Write-Output "power configuration list (should show high performance)"
   powercfg /list
