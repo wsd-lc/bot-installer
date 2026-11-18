@@ -293,6 +293,20 @@ try {
   New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" -Force
   New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" -Name "DisableRealtimeMonitoring" -Value 1 -PropertyType DWORD -Force
 
+  # Windows 11 Smart App Control blocks unsigned programs such as chocolatey's ffmpeg/adb/scrcpy
+  # launchers ("An Application Control policy has blocked this file"), so the bot can't record.
+  # It switches itself on some time after a fresh install. 0 = off, 1 = on, 2 = evaluating.
+  # https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003
+  $smartAppControlKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy'
+  if (Test-Path $smartAppControlKey) {
+    Write-Output "turning off Smart App Control"
+    Set-ItemProperty -Path $smartAppControlKey -Name VerifiedAndReputablePolicyState -Value 0
+    # applies the change now instead of at the next restart
+    CiTool.exe --refresh --json; Assert-Success
+  } else {
+    Write-Output "no Smart App Control on this Windows version"
+  }
+
   $sshCommand = "ssh -i $($keyPath -replace '\\', '/') -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
   if (Test-Path "$repoDir\.git") {
     Write-Output "repo found, pointing it at $repoUrl and updating..."
