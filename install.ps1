@@ -58,13 +58,20 @@ try {
   if ($certificateHasTenDaysLeft) {
     Write-Output "AWS certificate has at least 10 days left"
   } else {
-    Write-Output "getting this machine an AWS certificate: a browser will open, log in with YOUR OWN SSO account"
+    Write-Output "getting this machine an AWS certificate: a browser will open, log in as someone with the BotCertificateIssuer SSO badge"
+    Write-Output "(if the browser is already logged in as someone else, log out of SSO first or use a private window)"
     aws configure set profile.bot-certificate-issuer.sso_start_url $ssoStartUrl; Assert-Success
     aws configure set profile.bot-certificate-issuer.sso_region eu-west-2; Assert-Success
     aws configure set profile.bot-certificate-issuer.sso_account_id $awsAccountId; Assert-Success
     aws configure set profile.bot-certificate-issuer.sso_role_name BotCertificateIssuer; Assert-Success
     aws configure set profile.bot-certificate-issuer.region eu-west-2; Assert-Success
     aws sso login --profile bot-certificate-issuer; Assert-Success
+    # the browser login passes for anyone (e.g. whoever was already logged in); the badge is only checked here
+    aws sts get-caller-identity --profile bot-certificate-issuer *> $null
+    if ($LASTEXITCODE -ne 0) {
+      aws sso logout --profile bot-certificate-issuer
+      throw "this SSO login doesn't have the BotCertificateIssuer badge: log out of SSO in the browser, run the installer again and log in as someone with the badge"
+    }
 
     $openssl = "$env:ProgramFiles\Git\mingw64\bin\openssl.exe"
     $csrPath = "$botCertificateDir\aws-bot.csr"
